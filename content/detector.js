@@ -25,7 +25,31 @@
 
   const CONFIRM_PAGE_KEYWORDS = [
     '/welcome', '/success', '/confirm', '/verify',
-    '/thank-you', '/thankyou', '/get-started'
+    '/thank-you', '/thankyou', '/get-started',
+    '/callback', '/auth/callback', '/oauth/callback',
+    '/dashboard', '/home', '/account'
+  ];
+
+  // OAuth provider domains — when the user returns FROM these, they likely just signed up
+  const OAUTH_PROVIDERS = [
+    'accounts.google.com',
+    'appleid.apple.com',
+    'www.facebook.com',
+    'github.com/login/oauth',
+    'login.microsoftonline.com',
+    'twitter.com/i/oauth',
+    'x.com/i/oauth',
+    'discord.com/oauth2',
+    'login.yahoo.com',
+    'amazon.com/ap/oa',
+    'api.linkedin.com'
+  ];
+
+  // "Sign in with" button keywords for OAuth detection
+  const OAUTH_BUTTON_KEYWORDS = [
+    'sign in with', 'sign up with', 'continue with',
+    'log in with', 'login with', 'register with',
+    'connect with', 'sign in using', 'sign up using'
   ];
 
   function hasConfirmPasswordField(form) {
@@ -86,6 +110,111 @@
       return name.charAt(0).toUpperCase() + name.slice(1);
     }
     return domain;
+  }
+
+  // --- OAuth Detection ---
+
+  function checkOAuthReturn() {
+    // Check if the user just came back from an OAuth provider
+    const referrer = document.referrer;
+    if (!referrer) return false;
+
+    try {
+      const refHost = new URL(referrer).hostname;
+      const isFromOAuth = OAUTH_PROVIDERS.some(provider => {
+        const providerHost = provider.split('/')[0];
+        return refHost === providerHost || refHost.endsWith('.' + providerHost);
+      });
+
+      if (!isFromOAuth) return false;
+
+      // We came from an OAuth provider — check if this looks like a first-time landing
+      const url = window.location.href.toLowerCase();
+      const isCallbackOrWelcome = CONFIRM_PAGE_KEYWORDS.some(kw => url.includes(kw))
+        || url.includes('/oauth') || url.includes('/auth')
+        || url.includes('/sso');
+
+      const pageText = document.body?.innerText?.toLowerCase() || '';
+      const welcomeSignals = [
+        'welcome', 'get started', 'set up your', 'complete your profile',
+        'account created', 'you\'re all set', 'thanks for joining',
+        'choose a username', 'pick a plan', 'almost done',
+        'finish setting up', 'one more step', 'personalize'
+      ];
+      const hasWelcomeText = welcomeSignals.some(s => pageText.includes(s));
+
+      return isCallbackOrWelcome || hasWelcomeText;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function watchOAuthButtons() {
+    // Listen for clicks on OAuth buttons ("Sign in with Google", etc.)
+    document.addEventListener('click', (e) => {
+      if (prompted) return;
+
+      const target = e.target.closest('button, a, [role="button"]');
+      if (!target) return;
+
+      const text = (target.textContent || target.getAttribute('aria-label') || '').toLowerCase().trim();
+      const isOAuthBtn = OAUTH_BUTTON_KEYWORDS.some(kw => text.includes(kw));
+
+      if (!isOAuthBtn) return;
+
+      // Also check for OAuth provider logos/icons as a signal
+      const hasProviderImg = target.querySelector('img[src*="google"], img[src*="apple"], img[src*="facebook"], img[src*="github"], img[src*="microsoft"]');
+      const hasProviderText = /google|apple|facebook|github|microsoft|twitter|discord|linkedin|yahoo/i.test(text);
+
+      if (isOAuthBtn && (hasProviderImg || hasProviderText)) {
+        // Store the current domain so we can detect return
+        const domain = getDomain();
+        const serviceName = getServiceName();
+        try {
+          browserAPI.runtime.sendMessage({
+            type: 'oauthStarted',
+            data: { domain, serviceName, timestamp: Date.now() }
+          });
+        } catch (e) {
+          // Fallback: use sessionStorage
+          sessionStorage.setItem('ableAccountOAuth', JSON.stringify({
+            domain, serviceName, timestamp: Date.now()
+          }));
+        }
+      }
+    }, true);
+  }
+
+  function checkOAuthSessionReturn() {
+    // Check if we stored an OAuth start in sessionStorage and just returned
+    try {
+      const stored = sessionStorage.getItem('ableAccountOAuth');
+      if (!stored) return;
+
+      const data = JSON.parse(stored);
+      const elapsed = Date.now() - data.timestamp;
+
+      // If we're back on the same domain within 5 minutes, the OAuth completed
+      if (getDomain() === data.domain && elapsed < 5 * 60 * 1000) {
+        // Check for signs of a logged-in state
+        const url = window.location.href.toLowerCase();
+        const isPostAuth = CONFIRM_PAGE_KEYWORDS.some(kw => url.includes(kw))
+          || url.includes('/dashboard') || url.includes('/home')
+          || url.includes('/feed') || url.includes('/app');
+
+        if (isPostAuth) {
+          sessionStorage.removeItem('ableAccountOAuth');
+          showPrompt('');
+        }
+      }
+
+      // Expire after 5 minutes
+      if (elapsed > 5 * 60 * 1000) {
+        sessionStorage.removeItem('ableAccountOAuth');
+      }
+    } catch (e) {
+      // Ignore
+    }
   }
 
   // --- Notification Banner ---
@@ -311,10 +440,20 @@
       checkOnLoad();
       watchForms();
       watchForDynamicForms();
+      watchOAuthButtons();
+      checkOAuthSessionReturn();
+      if (checkOAuthReturn()) {
+        showPrompt(extractEmailFromPage());
+      }
     });
   } else {
     checkOnLoad();
     watchForms();
     watchForDynamicForms();
+    watchOAuthButtons();
+    checkOAuthSessionReturn();
+    if (checkOAuthReturn()) {
+      showPrompt(extractEmailFromPage());
+    }
   }
 })();

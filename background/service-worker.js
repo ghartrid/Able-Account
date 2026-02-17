@@ -92,6 +92,11 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'clearPendingAccounts') {
     browserAPI.storage.local.set({ pendingAccounts: [] });
   }
+
+  // Content script detected an OAuth button click
+  if (message.type === 'oauthStarted') {
+    browserAPI.storage.local.set({ oauthPending: message.data });
+  }
 });
 
 async function handleNewAccountDetected(accountData) {
