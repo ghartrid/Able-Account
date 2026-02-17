@@ -8,6 +8,8 @@
 
   // Track if we already prompted on this page
   let prompted = false;
+  let formsWatched = false;
+  let mutationObserver = null;
 
   // --- Signup Detection ---
 
@@ -177,7 +179,7 @@
           });
         } catch (e) {
           // Fallback: use sessionStorage
-          sessionStorage.setItem('ableAccountOAuth', JSON.stringify({
+          sessionStorage.setItem('_aa_oa', JSON.stringify({
             domain, serviceName, timestamp: Date.now()
           }));
         }
@@ -188,7 +190,7 @@
   function checkOAuthSessionReturn() {
     // Check if we stored an OAuth start in sessionStorage and just returned
     try {
-      const stored = sessionStorage.getItem('ableAccountOAuth');
+      const stored = sessionStorage.getItem('_aa_oa');
       if (!stored) return;
 
       const data = JSON.parse(stored);
@@ -203,14 +205,14 @@
           || url.includes('/feed') || url.includes('/app');
 
         if (isPostAuth) {
-          sessionStorage.removeItem('ableAccountOAuth');
+          sessionStorage.removeItem('_aa_oa');
           showPrompt('');
         }
       }
 
       // Expire after 5 minutes
       if (elapsed > 5 * 60 * 1000) {
-        sessionStorage.removeItem('ableAccountOAuth');
+        sessionStorage.removeItem('_aa_oa');
       }
     } catch (e) {
       // Ignore
@@ -223,30 +225,54 @@
     if (prompted) return;
     prompted = true;
 
+    // Stop observing DOM — no longer needed
+    if (mutationObserver) mutationObserver.disconnect();
+
     const domain = getDomain();
     const serviceName = getServiceName();
 
-    // Create the notification banner
+    // Create the notification banner using DOM methods to avoid innerHTML XSS
     const banner = document.createElement('div');
     banner.id = 'able-account-banner';
-    banner.innerHTML = `
-      <div id="able-account-inner">
-        <div id="able-account-icon">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#3b82f6" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <div id="able-account-text">
-          <strong>New account detected on ${serviceName}</strong>
-          <span>Add <b>${domain}</b> to Able Account?</span>
-        </div>
-        <div id="able-account-actions">
-          <button id="able-account-add">Add</button>
-          <button id="able-account-dismiss">Dismiss</button>
-        </div>
-      </div>
-    `;
+
+    const inner = document.createElement('div');
+    inner.id = 'able-account-inner';
+
+    // Icon
+    const iconDiv = document.createElement('div');
+    iconDiv.id = 'able-account-icon';
+    iconDiv.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
+    // Text (user-controlled values use textContent)
+    const textDiv = document.createElement('div');
+    textDiv.id = 'able-account-text';
+    const strong = document.createElement('strong');
+    strong.textContent = `New account detected on ${serviceName}`;
+    const span = document.createElement('span');
+    span.textContent = 'Add ';
+    const bold = document.createElement('b');
+    bold.textContent = domain;
+    span.appendChild(bold);
+    span.appendChild(document.createTextNode(' to Able Account?'));
+    textDiv.appendChild(strong);
+    textDiv.appendChild(span);
+
+    // Actions
+    const actionsDiv = document.createElement('div');
+    actionsDiv.id = 'able-account-actions';
+    const addBtn = document.createElement('button');
+    addBtn.id = 'able-account-add';
+    addBtn.textContent = 'Add';
+    const dismissBtn = document.createElement('button');
+    dismissBtn.id = 'able-account-dismiss';
+    dismissBtn.textContent = 'Dismiss';
+    actionsDiv.appendChild(addBtn);
+    actionsDiv.appendChild(dismissBtn);
+
+    inner.appendChild(iconDiv);
+    inner.appendChild(textDiv);
+    inner.appendChild(actionsDiv);
+    banner.appendChild(inner);
 
     // Inject styles
     const style = document.createElement('style');
@@ -338,7 +364,7 @@
     document.body.appendChild(banner);
 
     // Handle Add
-    document.getElementById('able-account-add').addEventListener('click', () => {
+    addBtn.addEventListener('click', () => {
       browserAPI.runtime.sendMessage({
         type: 'newAccountDetected',
         data: {
@@ -351,7 +377,7 @@
     });
 
     // Handle Dismiss
-    document.getElementById('able-account-dismiss').addEventListener('click', () => {
+    dismissBtn.addEventListener('click', () => {
       dismissBanner(banner);
     });
 
@@ -371,6 +397,9 @@
   // --- Form Submit Listener ---
 
   function watchForms() {
+    if (formsWatched) return;
+    formsWatched = true;
+
     document.addEventListener('submit', (e) => {
       const form = e.target;
       if (!form || form.tagName !== 'FORM') return;
@@ -419,8 +448,11 @@
   // --- MutationObserver for SPAs ---
 
   function watchForDynamicForms() {
-    const observer = new MutationObserver(() => {
-      if (prompted) return;
+    mutationObserver = new MutationObserver(() => {
+      if (prompted) {
+        mutationObserver.disconnect();
+        return;
+      }
       const forms = document.querySelectorAll('form');
       for (const form of forms) {
         if (hasConfirmPasswordField(form) || (hasSignupButton(form) && isSignupURL())) {
@@ -430,7 +462,12 @@
       }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    mutationObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Stop observing after 2 minutes to prevent memory leak on long-lived pages
+    setTimeout(() => {
+      if (mutationObserver) mutationObserver.disconnect();
+    }, 120000);
   }
 
   // --- Init ---

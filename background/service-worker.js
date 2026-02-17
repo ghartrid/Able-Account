@@ -77,7 +77,15 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Content script detected a new signup
   if (message.type === 'newAccountDetected') {
-    handleNewAccountDetected(message.data);
+    // Validate required fields before processing
+    const data = message.data;
+    if (data && typeof data.service_name === 'string' && typeof data.url === 'string') {
+      handleNewAccountDetected({
+        service_name: data.service_name.slice(0, 200),
+        url: data.url.slice(0, 200),
+        username: typeof data.username === 'string' ? data.username.slice(0, 200) : ''
+      });
+    }
   }
 
   // Popup asking for pending detected accounts
@@ -94,7 +102,7 @@ browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Content script detected an OAuth button click
-  if (message.type === 'oauthStarted') {
+  if (message.type === 'oauthStarted' && message.data && typeof message.data.domain === 'string') {
     browserAPI.storage.local.set({ oauthPending: message.data });
   }
 });
@@ -128,5 +136,9 @@ async function handleNewAccountDetected(accountData) {
 
 // Open popup when user clicks a notification
 browserAPI.notifications.onClicked.addListener(() => {
-  browserAPI.action.openPopup();
+  try {
+    browserAPI.action.openPopup();
+  } catch (e) {
+    // openPopup may fail if user gesture is not available — ignore
+  }
 });

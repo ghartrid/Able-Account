@@ -27,6 +27,94 @@ body {
   max-height: 600px;
 }
 
+/* ========== LOCK SCREEN ========== */
+.lock-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  max-height: 600px;
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+  padding: 32px;
+}
+
+.lock-screen.hidden {
+  display: none;
+}
+
+.lock-content {
+  text-align: center;
+  width: 100%;
+  max-width: 280px;
+}
+
+.lock-content svg {
+  margin-bottom: 20px;
+  opacity: 0.8;
+}
+
+.lock-content h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 6px;
+}
+
+.lock-content p {
+  font-size: 12.5px;
+  color: #94a3b8;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+#lock-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#lock-form input[type="password"] {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid #334155;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+  background: #1e293b;
+  color: #f1f5f9;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+#lock-form input[type="password"]::placeholder {
+  color: #64748b;
+}
+
+#lock-form input[type="password"]:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.lock-submit {
+  width: 100%;
+  padding: 12px !important;
+  font-size: 14px !important;
+  margin-top: 4px;
+  border-radius: 10px !important;
+}
+
+.lock-error {
+  font-size: 12px;
+  color: #f87171;
+  text-align: center;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.lock-error.hidden {
+  display: none;
+}
+
 /* ========== HEADER ========== */
 header {
   display: flex;
@@ -65,6 +153,196 @@ header h1 {
   color: #e2e8f0;
   font-weight: 500;
   backdrop-filter: blur(4px);
+}
+
+/* ========== HEADER MENU ========== */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #e2e8f0;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.menu-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.menu-dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  min-width: 180px;
+  z-index: 50;
+  padding: 4px;
+  animation: menuFadeIn 0.15s ease-out;
+}
+
+@keyframes menuFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.menu-dropdown.hidden {
+  display: none;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: #334155;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  text-align: left;
+  font-family: inherit;
+}
+
+.menu-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.menu-item svg {
+  flex-shrink: 0;
+  color: #64748b;
+}
+
+.menu-item-red {
+  color: #dc2626;
+}
+
+.menu-item-red:hover {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.menu-item-red svg {
+  color: #dc2626;
+}
+
+.menu-divider {
+  height: 1px;
+  background: #f1f5f9;
+  margin: 4px 8px;
+}
+
+/* ========== IMPORT MODAL ========== */
+.import-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px 0 20px;
+  text-align: left;
+}
+
+.import-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12.5px;
+  color: #475569;
+}
+
+.import-radio:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.import-radio input[type="radio"] {
+  accent-color: #3b82f6;
+}
+
+.import-radio input[type="radio"]:checked + span {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+/* ========== PASSPHRASE MODAL ========== */
+.pass-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13.5px;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  color: #1e293b;
+  background: #fff;
+  margin-bottom: 8px;
+}
+
+.pass-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* ========== TOAST ========== */
+.toast {
+  position: fixed;
+  bottom: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e293b;
+  color: #f1f5f9;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  z-index: 200;
+  animation: toastIn 0.25s ease-out;
+  white-space: nowrap;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.toast.toast-out {
+  animation: toastOut 0.2s ease-in forwards;
+}
+
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to { opacity: 0; transform: translateX(-50%) translateY(8px); }
+}
+
+.toast.toast-error {
+  background: #dc2626;
 }
 
 /* ========== CONTROLS ========== */

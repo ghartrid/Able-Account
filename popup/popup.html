@@ -7,7 +7,26 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <div id="app">
+  <!-- Lock Screen -->
+  <div id="lock-screen" class="lock-screen">
+    <div class="lock-content">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        <circle cx="12" cy="16" r="1"/>
+      </svg>
+      <h2 id="lock-title">Unlock Able Account</h2>
+      <p id="lock-subtitle">Enter your passphrase to access your accounts.</p>
+      <form id="lock-form">
+        <input type="password" id="lock-passphrase" placeholder="Passphrase" required autocomplete="off">
+        <input type="password" id="lock-confirm" placeholder="Confirm passphrase" autocomplete="off" class="hidden">
+        <p id="lock-error" class="lock-error hidden"></p>
+        <button type="submit" id="lock-submit" class="btn-primary lock-submit">Unlock</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
     <!-- Header -->
     <header>
       <div class="header-brand">
@@ -18,7 +37,35 @@
         </svg>
         <h1>Able Account</h1>
       </div>
-      <span id="account-count" class="count-badge">0 accounts</span>
+      <div class="header-right">
+        <span id="account-count" class="count-badge">0 accounts</span>
+        <div class="menu-wrap">
+          <button id="menu-btn" class="menu-btn" title="Menu">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+          <div id="menu-dropdown" class="menu-dropdown hidden">
+            <button id="menu-export" class="menu-item">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export Backup
+            </button>
+            <button id="menu-import" class="menu-item">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Import Backup
+            </button>
+            <div class="menu-divider"></div>
+            <button id="menu-change-pass" class="menu-item">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Change Passphrase
+            </button>
+            <button id="menu-lock" class="menu-item menu-item-red">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 5-5 5 5 0 0 1 5 5v4"/><line x1="12" y1="15" x2="12" y2="18"/></svg>
+              Lock
+            </button>
+          </div>
+        </div>
+      </div>
     </header>
 
     <!-- Search & Controls -->
@@ -152,6 +199,60 @@
       </div>
     </div>
   </div>
+
+  <!-- Import Modal -->
+  <div id="import-overlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2>Import Backup</h2>
+      <p id="import-message">Choose how to handle existing accounts:</p>
+      <div class="import-options">
+        <label class="import-radio">
+          <input type="radio" name="import-mode" value="merge" checked>
+          <span>Merge — add new, skip duplicates</span>
+        </label>
+        <label class="import-radio">
+          <input type="radio" name="import-mode" value="replace">
+          <span>Replace — delete all, import from backup</span>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button id="import-cancel" class="btn-secondary">Cancel</button>
+        <button id="import-confirm" class="btn-primary">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Passphrase Modal -->
+  <div id="passphrase-overlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2>Change Passphrase</h2>
+      <p>Enter a new passphrase. Your data will be re-encrypted.</p>
+      <form id="passphrase-form">
+        <input type="password" id="pass-new" placeholder="New passphrase" required autocomplete="off" class="pass-input">
+        <input type="password" id="pass-confirm" placeholder="Confirm new passphrase" required autocomplete="off" class="pass-input">
+        <p id="pass-error" class="lock-error hidden"></p>
+        <div class="form-actions">
+          <button type="button" id="pass-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Change</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Export Warning Modal -->
+  <div id="export-overlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2>Export Backup</h2>
+      <p>Your backup file will be <strong>unencrypted</strong>. Anyone with access to the file can read your account data. Store it in a safe location.</p>
+      <div class="form-actions">
+        <button id="export-cancel" class="btn-secondary">Cancel</button>
+        <button id="export-confirm" class="btn-primary">Export Anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hidden file input for import -->
+  <input type="file" id="import-file-input" accept=".json" style="display:none">
 
   <script src="../lib/sql-wasm.js"></script>
   <script src="../db/database.js"></script>

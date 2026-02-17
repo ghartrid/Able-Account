@@ -7,8 +7,24 @@ let deleteTargetId = null;
 let debounceTimer = null;
 let alertDismissed = false;
 let audioCtx = null;
+let soundPlayedThisSession = false;
+let pendingImportData = null;
+let dbState = 'new';
+let eventsBound = false;
+let failedAttempts = 0;
 
-// DOM refs
+// DOM refs — lock screen
+const lockScreen = document.getElementById('lock-screen');
+const lockTitle = document.getElementById('lock-title');
+const lockSubtitle = document.getElementById('lock-subtitle');
+const lockForm = document.getElementById('lock-form');
+const lockPassphrase = document.getElementById('lock-passphrase');
+const lockConfirm = document.getElementById('lock-confirm');
+const lockError = document.getElementById('lock-error');
+const lockSubmit = document.getElementById('lock-submit');
+
+// DOM refs — main app
+const appEl = document.getElementById('app');
 const searchInput = document.getElementById('search-input');
 const clearSearchBtn = document.getElementById('clear-search');
 const filterChips = document.querySelectorAll('.chip[data-filter]');
@@ -31,17 +47,136 @@ const alertBanner = document.getElementById('alert-banner');
 const alertTitle = document.getElementById('alert-title');
 const alertDetail = document.getElementById('alert-detail');
 const alertDismissBtn = document.getElementById('alert-dismiss');
+const menuBtn = document.getElementById('menu-btn');
+const menuDropdown = document.getElementById('menu-dropdown');
+const menuExport = document.getElementById('menu-export');
+const menuImport = document.getElementById('menu-import');
+const menuLock = document.getElementById('menu-lock');
+const menuChangePass = document.getElementById('menu-change-pass');
+const importOverlay = document.getElementById('import-overlay');
+const importCancel = document.getElementById('import-cancel');
+const importConfirmBtn = document.getElementById('import-confirm');
+const importFileInput = document.getElementById('import-file-input');
+const importMessage = document.getElementById('import-message');
+const passphraseOverlay = document.getElementById('passphrase-overlay');
+const passphraseForm = document.getElementById('passphrase-form');
+const passNew = document.getElementById('pass-new');
+const passConfirmInput = document.getElementById('pass-confirm');
+const passError = document.getElementById('pass-error');
+const passCancel = document.getElementById('pass-cancel');
+const exportOverlay = document.getElementById('export-overlay');
+const exportCancel = document.getElementById('export-cancel');
+const exportConfirmBtn = document.getElementById('export-confirm');
 
 // --- Init ---
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await initDB();
-  loadAccounts();
-  bindEvents();
-  await importPendingAccounts();
+  dbState = await getDBState();
+  configureLockScreen(dbState);
+  bindLockEvents();
+  lockPassphrase.focus();
 });
 
+function configureLockScreen(state) {
+  switch (state) {
+    case 'new':
+      lockTitle.textContent = 'Welcome to Able Account';
+      lockSubtitle.textContent = 'Create a passphrase to encrypt your data. You\'ll need this each time you open the extension.';
+      lockConfirm.classList.remove('hidden');
+      lockSubmit.textContent = 'Create & Continue';
+      break;
+    case 'unencrypted':
+      lockTitle.textContent = 'Encrypt Your Data';
+      lockSubtitle.textContent = 'Your existing accounts will be encrypted. Set a passphrase to protect them.';
+      lockConfirm.classList.remove('hidden');
+      lockSubmit.textContent = 'Encrypt & Continue';
+      break;
+    case 'encrypted':
+      lockTitle.textContent = 'Unlock Able Account';
+      lockSubtitle.textContent = 'Enter your passphrase to access your accounts.';
+      lockConfirm.classList.add('hidden');
+      lockSubmit.textContent = 'Unlock';
+      break;
+  }
+}
+
+function bindLockEvents() {
+  lockForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    lockError.classList.add('hidden');
+
+    const passphrase = lockPassphrase.value;
+
+    // Validate passphrase
+    if (passphrase.length < 8) {
+      showLockError('Passphrase must be at least 8 characters.');
+      return;
+    }
+
+    // For new/migration, require confirmation
+    if (dbState !== 'encrypted') {
+      if (lockConfirm.value !== passphrase) {
+        showLockError('Passphrases do not match.');
+        lockConfirm.focus();
+        return;
+      }
+    }
+
+    // Brute-force delay: after 3 failures, add increasing delay
+    if (failedAttempts >= 3) {
+      const delaySec = Math.min(failedAttempts - 2, 10);
+      lockSubmit.disabled = true;
+      lockSubmit.textContent = `Wait ${delaySec}s...`;
+      await new Promise(r => setTimeout(r, delaySec * 1000));
+    }
+
+    // Disable form during key derivation
+    lockSubmit.disabled = true;
+    lockSubmit.textContent = 'Decrypting...';
+
+    try {
+      await initDB(passphrase);
+      failedAttempts = 0;
+      // Success — show main app
+      lockScreen.classList.add('hidden');
+      appEl.classList.remove('hidden');
+      loadAccounts();
+      bindEvents();
+      await importPendingAccounts();
+    } catch (err) {
+      if (err.message === 'WRONG_PASSPHRASE') {
+        failedAttempts++;
+        const msg = failedAttempts >= 3
+          ? `Wrong passphrase. Please try again. (${failedAttempts} failed attempts)`
+          : 'Wrong passphrase. Please try again.';
+        showLockError(msg);
+        lockPassphrase.value = '';
+        lockPassphrase.focus();
+      } else {
+        showLockError('Failed to open database. Try again.');
+        console.error('DB init error:', err);
+      }
+    } finally {
+      lockSubmit.disabled = false;
+      // Restore button text
+      if (dbState === 'encrypted') lockSubmit.textContent = 'Unlock';
+      else if (dbState === 'new') lockSubmit.textContent = 'Create & Continue';
+      else lockSubmit.textContent = 'Encrypt & Continue';
+    }
+  });
+}
+
+function showLockError(msg) {
+  lockError.textContent = msg;
+  lockError.classList.remove('hidden');
+}
+
+// --- Main App Events ---
+
 function bindEvents() {
+  if (eventsBound) return;
+  eventsBound = true;
+
   // Search
   searchInput.addEventListener('input', () => {
     clearTimeout(debounceTimer);
@@ -62,6 +197,7 @@ function bindEvents() {
 
   // Keyboard shortcut: / to focus search
   document.addEventListener('keydown', (e) => {
+    if (lockScreen && !lockScreen.classList.contains('hidden')) return;
     if (e.key === '/' && document.activeElement !== searchInput) {
       e.preventDefault();
       searchInput.focus();
@@ -71,6 +207,10 @@ function bindEvents() {
         closeModal();
       } else if (!deleteOverlay.classList.contains('hidden')) {
         closeDeleteModal();
+      } else if (!passphraseOverlay.classList.contains('hidden')) {
+        closePassphraseModal();
+      } else if (!exportOverlay.classList.contains('hidden')) {
+        exportOverlay.classList.add('hidden');
       } else if (currentSearch) {
         searchInput.value = '';
         currentSearch = '';
@@ -131,6 +271,146 @@ function bindEvents() {
     alertDismissed = true;
     alertBanner.classList.add('hidden');
   });
+
+  // Menu toggle
+  menuBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    menuDropdown.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', () => {
+    menuDropdown.classList.add('hidden');
+  });
+
+  menuDropdown.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  // Export backup — show warning first
+  menuExport.addEventListener('click', () => {
+    menuDropdown.classList.add('hidden');
+    const data = exportAllAccounts();
+    if (data.count === 0) {
+      showToast('No accounts to export', true);
+      return;
+    }
+    exportOverlay.classList.remove('hidden');
+  });
+
+  exportCancel.addEventListener('click', () => {
+    exportOverlay.classList.add('hidden');
+  });
+
+  exportOverlay.addEventListener('click', (e) => {
+    if (e.target === exportOverlay) exportOverlay.classList.add('hidden');
+  });
+
+  exportConfirmBtn.addEventListener('click', () => {
+    exportOverlay.classList.add('hidden');
+    handleExport();
+  });
+
+  // Import backup
+  menuImport.addEventListener('click', () => {
+    menuDropdown.classList.add('hidden');
+    importFileInput.click();
+  });
+
+  importFileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    handleImportFile(file);
+    importFileInput.value = '';
+  });
+
+  importCancel.addEventListener('click', closeImportModal);
+  importOverlay.addEventListener('click', (e) => {
+    if (e.target === importOverlay) closeImportModal();
+  });
+
+  importConfirmBtn.addEventListener('click', async () => {
+    if (!pendingImportData) return;
+    const mode = document.querySelector('input[name="import-mode"]:checked').value;
+    const result = await importAccounts(pendingImportData.accounts, mode);
+    closeImportModal();
+    loadAccounts();
+    showToast(`Imported ${result.added} account${result.added !== 1 ? 's' : ''}${result.skipped > 0 ? `, ${result.skipped} skipped` : ''}`);
+  });
+
+  // Lock
+  menuLock.addEventListener('click', () => {
+    menuDropdown.classList.add('hidden');
+    handleLock();
+  });
+
+  // Change passphrase
+  menuChangePass.addEventListener('click', () => {
+    menuDropdown.classList.add('hidden');
+    openPassphraseModal();
+  });
+
+  passCancel.addEventListener('click', closePassphraseModal);
+  passphraseOverlay.addEventListener('click', (e) => {
+    if (e.target === passphraseOverlay) closePassphraseModal();
+  });
+
+  passphraseForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    passError.classList.add('hidden');
+
+    const newPass = passNew.value;
+    const confirmPass = passConfirmInput.value;
+
+    if (newPass.length < 8) {
+      passError.textContent = 'Passphrase must be at least 8 characters.';
+      passError.classList.remove('hidden');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      passError.textContent = 'Passphrases do not match.';
+      passError.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      await changePassphrase(newPass);
+      closePassphraseModal();
+      showToast('Passphrase changed successfully');
+    } catch (err) {
+      passError.textContent = 'Failed to change passphrase. Try again.';
+      passError.classList.remove('hidden');
+      console.error('Passphrase change error:', err);
+    }
+  });
+}
+
+// --- Lock / Passphrase ---
+
+function handleLock() {
+  lockDB();
+  appEl.classList.add('hidden');
+  lockScreen.classList.remove('hidden');
+  lockPassphrase.value = '';
+  lockConfirm.value = '';
+  lockError.classList.add('hidden');
+  dbState = 'encrypted';
+  configureLockScreen('encrypted');
+  lockPassphrase.focus();
+  // Reset session state so alerts work on next unlock
+  soundPlayedThisSession = false;
+  alertDismissed = false;
+}
+
+function openPassphraseModal() {
+  passphraseForm.reset();
+  passError.classList.add('hidden');
+  passphraseOverlay.classList.remove('hidden');
+  passNew.focus();
+}
+
+function closePassphraseModal() {
+  passphraseOverlay.classList.add('hidden');
+  passphraseForm.reset();
 }
 
 // --- Data ---
@@ -227,8 +507,9 @@ function showOverdueAlert() {
 
   alertBanner.classList.remove('hidden');
 
-  // Play audible alert for overdue accounts
-  if (overdueAccounts.length > 0) {
+  // Play audible alert for overdue accounts (once per popup open)
+  if (overdueAccounts.length > 0 && !soundPlayedThisSession) {
+    soundPlayedThisSession = true;
     playAlertSound();
   }
 }
@@ -311,7 +592,7 @@ function renderList() {
   accountList.querySelectorAll('.row-action-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const id = parseInt(btn.dataset.id);
+      const id = parseInt(btn.dataset.id, 10);
       const action = btn.dataset.action;
       handleRowAction(id, action);
     });
@@ -320,7 +601,7 @@ function renderList() {
   // Row click to edit
   accountList.querySelectorAll('.account-row').forEach(row => {
     row.addEventListener('click', () => {
-      const id = parseInt(row.dataset.id);
+      const id = parseInt(row.dataset.id, 10);
       const account = allAccounts.find(a => a.id === id);
       if (account) openModal(account);
     });
@@ -442,9 +723,19 @@ async function handleRowAction(id, action) {
     case 'open': {
       const account = allAccounts.find(a => a.id === id);
       if (account && account.url) {
-        let url = account.url;
-        if (!url.startsWith('http')) url = 'https://' + url;
-        window.open(url, '_blank');
+        let url = account.url.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        // Only allow http/https URLs — block javascript:, data:, etc.
+        try {
+          const parsed = new URL(url);
+          if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            window.open(url, '_blank');
+          }
+        } catch (e) {
+          // Invalid URL — ignore
+        }
       }
       break;
     }
@@ -501,17 +792,22 @@ async function saveAccount() {
     url: document.getElementById('form-url').value.trim(),
     username: document.getElementById('form-username').value.trim(),
     category: document.getElementById('form-category').value,
-    refresh_interval_days: parseInt(document.getElementById('form-interval').value) || 90,
-    last_password_change: document.getElementById('form-lastchange').value
-      ? new Date(document.getElementById('form-lastchange').value).toISOString()
-      : new Date().toISOString(),
+    refresh_interval_days: parseInt(document.getElementById('form-interval').value, 10) || 90,
+    last_password_change: (() => {
+      const val = document.getElementById('form-lastchange').value;
+      if (val) {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+      }
+      return new Date().toISOString();
+    })(),
     notes: document.getElementById('form-notes').value.trim()
   };
 
   if (!data.service_name) return;
 
   if (id) {
-    await updateAccount(parseInt(id), data);
+    await updateAccount(parseInt(id, 10), data);
   } else {
     await addAccount(data);
   }
@@ -535,4 +831,78 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+// --- Backup & Restore ---
+
+function handleExport() {
+  const data = exportAllAccounts();
+  if (data.count === 0) {
+    showToast('No accounts to export', true);
+    return;
+  }
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const date = new Date().toISOString().split('T')[0];
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `able-account-backup-${date}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  showToast(`Exported ${data.count} account${data.count !== 1 ? 's' : ''}`);
+}
+
+function handleImportFile(file) {
+  if (!file.name.endsWith('.json')) {
+    showToast('Please select a .json backup file', true);
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('File too large (max 5MB)', true);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      const error = validateImportData(data);
+      if (error) {
+        showToast(error, true);
+        return;
+      }
+      pendingImportData = data;
+      importMessage.textContent = `Found ${data.accounts.length} account${data.accounts.length !== 1 ? 's' : ''} in backup. Choose how to import:`;
+      importOverlay.classList.remove('hidden');
+    } catch (err) {
+      showToast('Invalid JSON file', true);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function closeImportModal() {
+  importOverlay.classList.add('hidden');
+  pendingImportData = null;
+}
+
+function showToast(message, isError = false) {
+  // Remove existing toast
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' toast-error' : '');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 200);
+  }, 2500);
 }
