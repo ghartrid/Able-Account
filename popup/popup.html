@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Able Account</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header>
+      <h1>Able Account</h1>
+      <span id="account-count" class="count-badge">0 accounts</span>
+    </header>
+
+    <!-- Search & Controls -->
+    <div id="controls">
+      <div class="search-wrap">
+        <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Search accounts... ( / )" autocomplete="off">
+        <button id="clear-search" class="clear-btn" title="Clear search">&times;</button>
+      </div>
+
+      <div class="filter-row">
+        <div class="filter-chips">
+          <button class="chip active" data-filter="all">All</button>
+          <button class="chip chip-red" data-filter="overdue">Overdue</button>
+          <button class="chip chip-yellow" data-filter="due_soon">Due Soon</button>
+          <button class="chip chip-green" data-filter="good">Good</button>
+        </div>
+        <select id="sort-select" title="Sort accounts">
+          <option value="name_asc">Name A-Z</option>
+          <option value="name_desc">Name Z-A</option>
+          <option value="urgency">Most Urgent</option>
+          <option value="oldest_change">Oldest Password</option>
+          <option value="date_added">Recently Added</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Filtered result count -->
+    <div id="filter-info" class="filter-info hidden"></div>
+
+    <!-- Account List -->
+    <div id="account-list" class="account-list">
+      <!-- Accounts rendered here by JS -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state hidden">
+      <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#94a3b8" stroke-width="1.5">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+      </svg>
+      <p id="empty-message">No accounts yet. Add your first one!</p>
+    </div>
+
+    <!-- Add Account Button -->
+    <button id="add-btn" class="add-btn" title="Add Account">+</button>
+  </div>
+
+  <!-- Add/Edit Modal -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Add Account</h2>
+        <button id="modal-close" class="modal-close">&times;</button>
+      </div>
+      <form id="account-form">
+        <input type="hidden" id="form-id">
+
+        <label for="form-service">Service Name *</label>
+        <input type="text" id="form-service" required placeholder="e.g. Netflix, Gmail, Amazon">
+
+        <label for="form-url">URL / Domain</label>
+        <input type="text" id="form-url" placeholder="e.g. netflix.com">
+
+        <label for="form-username">Username / Email</label>
+        <input type="text" id="form-username" placeholder="e.g. user@email.com">
+
+        <label for="form-category">Category</label>
+        <select id="form-category">
+          <option value="general">General</option>
+          <option value="financial">Financial / Banking</option>
+          <option value="email">Email</option>
+          <option value="social">Social Media</option>
+          <option value="shopping">Shopping</option>
+          <option value="streaming">Streaming</option>
+          <option value="work">Work</option>
+          <option value="gaming">Gaming</option>
+        </select>
+
+        <label for="form-interval">Password Refresh Interval (days)</label>
+        <input type="number" id="form-interval" value="90" min="1" max="365">
+
+        <label for="form-lastchange">Last Password Change</label>
+        <input type="date" id="form-lastchange">
+
+        <label for="form-notes">Notes</label>
+        <textarea id="form-notes" rows="2" placeholder="Optional notes..."></textarea>
+
+        <div class="form-actions">
+          <button type="button" id="form-cancel" class="btn-secondary">Cancel</button>
+          <button type="submit" class="btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Confirm Delete Modal -->
+  <div id="delete-overlay" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2>Delete Account?</h2>
+      <p id="delete-message">Are you sure you want to remove this account from tracking?</p>
+      <div class="form-actions">
+        <button id="delete-cancel" class="btn-secondary">Cancel</button>
+        <button id="delete-confirm" class="btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/sql-wasm.js"></script>
+  <script src="../db/database.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

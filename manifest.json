@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Able Account - Password Refresh Tracker",
+  "version": "1.0.0",
+  "description": "Track your accounts and get reminded to refresh passwords. No passwords stored.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "account-manager@extension",
+      "strict_min_version": "109.0"
+    }
+  }
+}
