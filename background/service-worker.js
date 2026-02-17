@@ -1,8 +1,8 @@
 // Cross-browser namespace
 const browserAPI = typeof browser !== 'undefined' ? browser : chrome;
 
-// Check overdue accounts daily
-browserAPI.alarms.create('checkOverdue', { periodInMinutes: 1440 });
+// Check overdue accounts every 4 hours
+browserAPI.alarms.create('checkOverdue', { periodInMinutes: 240 });
 
 // Also check on install/startup
 browserAPI.runtime.onInstalled.addListener(() => {
@@ -21,29 +21,35 @@ browserAPI.alarms.onAlarm.addListener((alarm) => {
 
 async function checkOverdueAccounts() {
   try {
-    const stored = await browserAPI.storage.local.get('accountDB');
-    if (!stored.accountDB) {
-      updateBadge(0);
-      return;
-    }
-
-    // Parse the stored DB to count overdue accounts
-    // We read the raw data to avoid loading sql.js in the service worker
-    // Instead, we use a simpler approach: store overdue count alongside the DB
-    const countData = await browserAPI.storage.local.get('overdueCount');
-    const count = countData.overdueCount || 0;
+    const data = await browserAPI.storage.local.get(['overdueCount', 'overdueNames']);
+    const count = data.overdueCount || 0;
+    const names = data.overdueNames || [];
     updateBadge(count);
 
     if (count > 0) {
-      browserAPI.notifications.create('overdueReminder', {
-        type: 'basic',
-        iconUrl: browserAPI.runtime.getURL('icons/icon128.png'),
-        title: 'Password Refresh Reminder',
-        message: count === 1
-          ? '1 account needs a password refresh.'
-          : `${count} accounts need a password refresh.`,
-        priority: 1
-      });
+      // Don't spam — only notify once every 4 hours
+      const lastNotified = await browserAPI.storage.local.get('lastNotifiedTime');
+      const now = Date.now();
+      const fourHoursMs = 4 * 60 * 60 * 1000;
+
+      if (!lastNotified.lastNotifiedTime || (now - lastNotified.lastNotifiedTime) >= fourHoursMs) {
+        const nameList = names.slice(0, 3).join(', ');
+        const extra = count > 3 ? ` and ${count - 3} more` : '';
+        const message = count === 1
+          ? `${names[0] || 'An account'} needs a password refresh.`
+          : `${nameList}${extra} need password refreshes.`;
+
+        browserAPI.notifications.create('overdueReminder-' + now, {
+          type: 'basic',
+          iconUrl: browserAPI.runtime.getURL('icons/icon128.png'),
+          title: 'Able Account - Passwords Overdue!',
+          message: message,
+          priority: 2,
+          requireInteraction: true
+        });
+
+        await browserAPI.storage.local.set({ lastNotifiedTime: now });
+      }
     }
   } catch (err) {
     console.error('Error checking overdue accounts:', err);
@@ -59,10 +65,63 @@ function updateBadge(count) {
   }
 }
 
-// Listen for messages from popup to update overdue count
-browserAPI.runtime.onMessage.addListener((message) => {
+// Listen for messages from popup and content scripts
+browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'updateOverdueCount') {
-    browserAPI.storage.local.set({ overdueCount: message.count });
+    browserAPI.storage.local.set({
+      overdueCount: message.count,
+      overdueNames: message.names || []
+    });
     updateBadge(message.count);
   }
+
+  // Content script detected a new signup
+  if (message.type === 'newAccountDetected') {
+    handleNewAccountDetected(message.data);
+  }
+
+  // Popup asking for pending detected accounts
+  if (message.type === 'getPendingAccounts') {
+    browserAPI.storage.local.get('pendingAccounts').then(data => {
+      sendResponse(data.pendingAccounts || []);
+    });
+    return true; // keep channel open for async response
+  }
+
+  // Popup clearing pending accounts
+  if (message.type === 'clearPendingAccounts') {
+    browserAPI.storage.local.set({ pendingAccounts: [] });
+  }
+});
+
+async function handleNewAccountDetected(accountData) {
+  // Store in pending list for popup to pick up
+  const data = await browserAPI.storage.local.get('pendingAccounts');
+  const pending = data.pendingAccounts || [];
+
+  // Don't add duplicates (same domain)
+  if (pending.some(p => p.url === accountData.url)) return;
+
+  pending.push({
+    service_name: accountData.service_name,
+    url: accountData.url,
+    username: accountData.username,
+    detected_at: new Date().toISOString()
+  });
+
+  await browserAPI.storage.local.set({ pendingAccounts: pending });
+
+  // Show a notification
+  browserAPI.notifications.create('newAccount-' + Date.now(), {
+    type: 'basic',
+    iconUrl: browserAPI.runtime.getURL('icons/icon128.png'),
+    title: 'Able Account - New Account Detected',
+    message: `${accountData.service_name} (${accountData.url}) was added to your account list.`,
+    priority: 1
+  });
+}
+
+// Open popup when user clicks a notification
+browserAPI.notifications.onClicked.addListener(() => {
+  browserAPI.action.openPopup();
 });
